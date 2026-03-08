@@ -10,6 +10,12 @@ import {
 } from "@robocloud/shared";
 
 export type TelemetryCallback = (telemetry: TelemetryFrame) => void;
+export type DisconnectCallback = (code: number, reason: string) => void;
+export type ErrorCallback = (error: Error) => void;
+
+export interface SessionConnectOptions {
+  timeoutMs?: number;
+}
 
 export class RoboCloudSession {
   readonly data: SessionResponse;
@@ -17,6 +23,8 @@ export class RoboCloudSession {
   private wsUrl: string;
   private accessToken: string;
   private telemetryCallbacks: TelemetryCallback[] = [];
+  private disconnectCallbacks: DisconnectCallback[] = [];
+  private errorCallbacks: ErrorCallback[] = [];
   private sequence = 0n;
   private connected = false;
   private closePromiseResolve: (() => void) | null = null;
@@ -27,14 +35,29 @@ export class RoboCloudSession {
     this.accessToken = accessToken;
   }
 
-  async connect(): Promise<void> {
+  async connect(options: SessionConnectOptions = {}): Promise<void> {
+    const { timeoutMs = 5000 } = options;
+
     return new Promise<void>((resolve, reject) => {
-      this.ws = new WebSocket(this.wsUrl, {
+      const timer = setTimeout(() => {
+        if (this.ws) {
+          this.ws.close();
+          this.ws = null;
+        }
+        reject(new Error(`WebSocket connect timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      const wsUrlWithToken = this.wsUrl.includes("?")
+        ? `${this.wsUrl}&token=${encodeURIComponent(this.accessToken)}`
+        : `${this.wsUrl}?token=${encodeURIComponent(this.accessToken)}`;
+
+      this.ws = new WebSocket(wsUrlWithToken, {
         headers: { Authorization: `Bearer ${this.accessToken}` },
       });
       this.ws.binaryType = "arraybuffer";
 
       this.ws.on("open", () => {
+        clearTimeout(timer);
         this.connected = true;
         resolve();
       });
@@ -55,16 +78,28 @@ export class RoboCloudSession {
         }
       });
 
-      this.ws.on("close", () => {
+      this.ws.on("close", (code: number, reason: Buffer) => {
+        const wasConnected = this.connected;
         this.connected = false;
+
         if (this.closePromiseResolve) {
           this.closePromiseResolve();
           this.closePromiseResolve = null;
         }
+
+        const reasonStr = reason?.toString() ?? "";
+        for (const cb of this.disconnectCallbacks) {
+          cb(code, reasonStr);
+        }
       });
 
       this.ws.on("error", (err) => {
+        for (const cb of this.errorCallbacks) {
+          cb(err);
+        }
+
         if (!this.connected) {
+          clearTimeout(timer);
           reject(err);
         }
       });
@@ -114,6 +149,22 @@ export class RoboCloudSession {
     return () => {
       const idx = this.telemetryCallbacks.indexOf(callback);
       if (idx >= 0) this.telemetryCallbacks.splice(idx, 1);
+    };
+  }
+
+  onDisconnect(callback: DisconnectCallback): () => void {
+    this.disconnectCallbacks.push(callback);
+    return () => {
+      const idx = this.disconnectCallbacks.indexOf(callback);
+      if (idx >= 0) this.disconnectCallbacks.splice(idx, 1);
+    };
+  }
+
+  onError(callback: ErrorCallback): () => void {
+    this.errorCallbacks.push(callback);
+    return () => {
+      const idx = this.errorCallbacks.indexOf(callback);
+      if (idx >= 0) this.errorCallbacks.splice(idx, 1);
     };
   }
 

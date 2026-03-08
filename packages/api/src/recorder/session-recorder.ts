@@ -1,7 +1,9 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { fromBinary } from "@bufbuild/protobuf";
 import { EnvelopeSchema, type Envelope } from "@robocloud/shared";
+import { config } from "../config.js";
 
 interface RecordingEntry {
   timestampUs: string;
@@ -122,6 +124,63 @@ export class SessionRecorder {
       join(this.basePath, "metadata.json"),
       JSON.stringify(this.metadata, null, 2)
     );
+
+    if (config.supabaseConfigured) {
+      this.uploadToSupabase().catch((err) =>
+        console.error("[recorder] Supabase upload failed (local copy preserved):", err)
+      );
+    }
+  }
+
+  private async uploadToSupabase(): Promise<void> {
+    const { getSupabaseAdmin } = await import("../db/supabase.js");
+    const supabase = getSupabaseAdmin();
+
+    const bucket = "recordings";
+    const { error: bucketErr } = await supabase.storage.createBucket(bucket, { public: false });
+    if (bucketErr && !bucketErr.message.includes("already exists")) {
+      console.warn("[recorder] Could not create storage bucket:", bucketErr.message);
+    }
+
+    const filesToUpload = [
+      "metadata.json",
+      "commands.jsonl",
+      "commands.binlog",
+      "telemetry.jsonl",
+      "telemetry.binlog",
+    ];
+
+    for (const filename of filesToUpload) {
+      const localPath = join(this.basePath, filename);
+      if (!existsSync(localPath)) continue;
+
+      const content = await readFile(localPath);
+      const storagePath = `${this.sessionId}/${filename}`;
+      const { error } = await supabase.storage.from(bucket).upload(storagePath, content, {
+        upsert: true,
+        contentType: filename.endsWith(".json") || filename.endsWith(".jsonl")
+          ? "application/json"
+          : "application/octet-stream",
+      });
+      if (error) {
+        console.warn(`[recorder] Failed to upload ${filename}:`, error.message);
+      }
+    }
+
+    const camerasDir = join(this.basePath, "cameras");
+    if (existsSync(camerasDir)) {
+      const cameraFiles = await readdir(camerasDir);
+      for (const file of cameraFiles) {
+        const content = await readFile(join(camerasDir, file.toString()));
+        const storagePath = `${this.sessionId}/cameras/${file}`;
+        await supabase.storage.from(bucket).upload(storagePath, content, {
+          upsert: true,
+          contentType: "application/octet-stream",
+        });
+      }
+    }
+
+    console.log(`[recorder] session ${this.sessionId} uploaded to Supabase Storage`);
   }
 
   getBasePath(): string {

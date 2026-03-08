@@ -10,15 +10,18 @@ import { RoboCloudSession } from "./session.js";
 export interface RoboCloudClientConfig {
   baseUrl: string;
   accessToken?: string;
+  fetchTimeoutMs?: number;
 }
 
 export class RoboCloudClient {
   private baseUrl: string;
   private accessToken: string | null;
+  private fetchTimeoutMs: number;
 
   constructor(config: RoboCloudClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
     this.accessToken = config.accessToken ?? null;
+    this.fetchTimeoutMs = config.fetchTimeoutMs ?? 10000;
   }
 
   async signup(email: string, password: string): Promise<AuthResponse> {
@@ -68,7 +71,7 @@ export class RoboCloudClient {
     });
 
     const wsUrl = sessionData.wsEndpoint;
-    return new RoboCloudSession(sessionData, wsUrl, this.accessToken!);
+    return new RoboCloudSession(sessionData, wsUrl, this.accessToken ?? "");
   }
 
   async getSession(id: string): Promise<SessionResponse> {
@@ -92,18 +95,26 @@ export class RoboCloudClient {
     stream: string
   ): Promise<ArrayBuffer> {
     const url = `${this.baseUrl}/sessions/${sessionId}/recording/${stream}`;
-    const response = await globalThis.fetch(url, {
-      headers: this.accessToken
-        ? { Authorization: `Bearer ${this.accessToken}` }
-        : {},
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.fetchTimeoutMs);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({})) as ErrorResponse;
-      throw new Error(error.message ?? `HTTP ${response.status}`);
+    try {
+      const response = await globalThis.fetch(url, {
+        headers: this.accessToken
+          ? { Authorization: `Bearer ${this.accessToken}` }
+          : {},
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({})) as ErrorResponse;
+        throw new Error(error.message ?? `HTTP ${response.status}`);
+      }
+
+      return response.arrayBuffer();
+    } finally {
+      clearTimeout(timer);
     }
-
-    return response.arrayBuffer();
   }
 
   private async fetch(
@@ -123,20 +134,28 @@ export class RoboCloudClient {
       headers["Authorization"] = `Bearer ${this.accessToken}`;
     }
 
-    const response = await globalThis.fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.fetchTimeoutMs);
 
-    const data = await response.json();
+    try {
+      const response = await globalThis.fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      throw new Error(
-        (data as ErrorResponse).message ?? `HTTP ${response.status}`
-      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          (data as ErrorResponse).message ?? `HTTP ${response.status}`
+        );
+      }
+
+      return data;
+    } finally {
+      clearTimeout(timer);
     }
-
-    return data;
   }
 }

@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import fastifyCors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { config } from "./config.js";
 import { authRoutes } from "./routes/auth.js";
 import { robotRoutes } from "./routes/robots.js";
@@ -22,6 +23,13 @@ async function main(): Promise<void> {
 
   await app.register(fastifyCors, { origin: true });
   await app.register(fastifyWebsocket);
+  await app.register(rateLimit, {
+    max: 100,
+    timeWindow: "1 minute",
+    allowList: (request) => {
+      return request.url.includes("/agent") || request.url.includes("/control");
+    },
+  });
 
   app.get("/health", async () => ({
     status: "ok",
@@ -38,12 +46,14 @@ async function main(): Promise<void> {
 
   await app.listen({ port: config.port, host: config.host });
 
-  const baseUrl = `http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}`;
+  const baseUrl = config.publicUrl || `http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}`;
   console.log(`[api] RoboCloud API listening on ${baseUrl}`);
 
   if (!config.supabaseConfigured) {
-    console.log("[api] WARNING: Supabase is not configured — running in dev mode (auth disabled, all routes open)");
-    console.log("[api] Set SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY in .env to enable auth");
+    console.log("[api] WARNING: Supabase not configured — auth disabled, all routes open (dev mode)");
+  }
+  if (!config.robotAgentSecret) {
+    console.log("[api] WARNING: ROBOT_AGENT_SECRET not set — any agent can connect");
   }
 }
 

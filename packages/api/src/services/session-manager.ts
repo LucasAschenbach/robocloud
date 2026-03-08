@@ -46,6 +46,8 @@ class SessionManagerService {
     this.robotToSession.set(robotId, session.id);
     robotRegistry.setStatus(robotId, RobotStatus.IN_SESSION);
 
+    this.persistSession(session);
+
     return session;
   }
 
@@ -75,6 +77,8 @@ class SessionManagerService {
     this.robotToSession.delete(session.robotId);
     robotRegistry.setStatus(session.robotId, RobotStatus.AVAILABLE);
 
+    this.persistSessionEnd(session);
+
     return session;
   }
 
@@ -82,6 +86,32 @@ class SessionManagerService {
     const sessionId = this.robotToSession.get(robotId);
     if (!sessionId) return undefined;
     return this.sessions.get(sessionId);
+  }
+
+  private persistSession(session: ActiveSession): void {
+    import("../db/drizzle.js").then(async ({ getDb, schema }) => {
+      const db = getDb();
+      if (!db) return;
+      await db.insert(schema.sessions).values({
+        id: session.id,
+        robotId: session.robotId,
+        userId: session.userId,
+        status: session.status,
+        record: session.record,
+        createdAt: session.createdAt,
+      });
+    }).catch((err) => console.warn("[session] DB persist failed:", err));
+  }
+
+  private persistSessionEnd(session: ActiveSession): void {
+    import("../db/drizzle.js").then(async ({ getDb, schema }) => {
+      const db = getDb();
+      if (!db) return;
+      const { eq } = await import("drizzle-orm");
+      await db.update(schema.sessions)
+        .set({ status: session.status, endedAt: session.endedAt })
+        .where(eq(schema.sessions.id, session.id));
+    }).catch((err) => console.warn("[session] DB persist-end failed:", err));
   }
 }
 

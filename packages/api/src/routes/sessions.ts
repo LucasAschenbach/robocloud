@@ -12,7 +12,7 @@ function serializeSession(session: ReturnType<typeof sessionManager.getSession> 
     userId: session.userId,
     status: session.status,
     record: session.record,
-    wsEndpoint: `ws://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}/sessions/${session.id}/control`,
+    wsEndpoint: `${config.wsBaseUrl}/sessions/${session.id}/control`,
     createdAt: session.createdAt.toISOString(),
     endedAt: session.endedAt?.toISOString() ?? null,
   };

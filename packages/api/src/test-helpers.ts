@@ -12,7 +12,11 @@ import { controlWsHandler } from "./ws/control-handler.js";
  * Injects a fake user for all authenticated routes.
  */
 export async function createTestServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: false,
+    requestTimeout: 0,
+    keepAliveTimeout: 0,
+  });
 
   await app.register(fastifyCors, { origin: true });
   await app.register(fastifyWebsocket);

@@ -1,0 +1,47 @@
+services:
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      - "${API_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      API_HOST: "0.0.0.0"
+      API_PORT: "3000"
+    volumes:
+      - recordings:/app/recordings
+    restart: unless-stopped
+
+  agent-arm:
+    build:
+      context: .
+      target: robot-agent
+    env_file: .env
+    environment:
+      ROBOT_AGENT_WS_URL: "ws://api:3000"
+      ROBOT_TYPE: "arm6dof"
+      ROBOT_ID: "sim-arm-001"
+      ROBOT_NAME: "Simulated 6-DOF Arm"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  agent-mobile:
+    build:
+      context: .
+      target: robot-agent
+    env_file: .env
+    environment:
+      ROBOT_AGENT_WS_URL: "ws://api:3000"
+      ROBOT_TYPE: "mobile2d"
+      ROBOT_ID: "sim-mobile-001"
+      ROBOT_NAME: "Simulated Mobile Robot"
+    depends_on:
+      - api
+    restart: unless-stopped
+    profiles:
+      - mobile
+
+volumes:
+  recordings:

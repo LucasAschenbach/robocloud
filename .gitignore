@@ -5,3 +5,11 @@ dist/
 .env
 .env.local
 recordings/
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.pytest_cache/

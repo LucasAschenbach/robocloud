@@ -16,7 +16,7 @@ services:
   agent-arm:
     build:
       context: .
-      target: robot-agent
+      target: robot-agent-ts
     env_file: .env
     environment:
       ROBOT_AGENT_WS_URL: "ws://api:3000"
@@ -30,7 +30,7 @@ services:
   agent-mobile:
     build:
       context: .
-      target: robot-agent
+      target: robot-agent-ts
     env_file: .env
     environment:
       ROBOT_AGENT_WS_URL: "ws://api:3000"
@@ -42,6 +42,26 @@ services:
     restart: unless-stopped
     profiles:
       - mobile
+
+  agent-mujoco:
+    build:
+      context: .
+      target: python-agent
+    env_file: .env
+    environment:
+      ROBOT_AGENT_WS_URL: "ws://api:3000"
+      ROBOT_TYPE: "arm6dof"
+      ROBOT_ID: "mujoco-arm6dof-001"
+      ROBOT_NAME: "MuJoCo 6-DOF Arm"
+      CAMERA_WIDTH: "320"
+      CAMERA_HEIGHT: "240"
+      CAMERA_FORMAT: "raw"
+      MUJOCO_GL: "osmesa"
+    depends_on:
+      - api
+    restart: unless-stopped
+    profiles:
+      - mujoco
 
 volumes:
   recordings:

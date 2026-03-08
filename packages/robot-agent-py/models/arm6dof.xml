@@ -1,0 +1,139 @@
+<mujoco model="arm6dof">
+  <compiler angle="radian" autolimits="true"/>
+
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicit"/>
+
+  <default>
+    <joint damping="5" armature="0.1"/>
+    <geom contype="1" conaffinity="1" friction="0.8 0.02 0.01"/>
+    <motor ctrlrange="-1 1" ctrllimited="true"/>
+  </default>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.25 0.35 0.45"
+             width="256" height="256"/>
+    <material name="grid_mat" texture="grid" texrepeat="4 4" reflectance="0.1"/>
+    <material name="link_mat" rgba="0.4 0.45 0.5 1"/>
+    <material name="joint_mat" rgba="0.8 0.3 0.1 1"/>
+    <material name="gripper_mat" rgba="0.3 0.3 0.3 1"/>
+    <material name="target_mat" rgba="0.2 0.8 0.3 0.8"/>
+  </asset>
+
+  <worldbody>
+    <!-- Floor -->
+    <geom name="floor" type="plane" size="1 1 0.01" material="grid_mat" conaffinity="1" contype="1"/>
+
+    <!-- Table -->
+    <body name="table" pos="0 0 0.4">
+      <geom name="table_top" type="box" size="0.4 0.4 0.02" rgba="0.6 0.5 0.4 1" mass="10"/>
+      <geom name="leg1" type="cylinder" fromto="-0.35 -0.35 -0.4 -0.35 -0.35 -0.02" size="0.025" rgba="0.5 0.5 0.5 1"/>
+      <geom name="leg2" type="cylinder" fromto="0.35 -0.35 -0.4 0.35 -0.35 -0.02" size="0.025" rgba="0.5 0.5 0.5 1"/>
+      <geom name="leg3" type="cylinder" fromto="-0.35 0.35 -0.4 -0.35 0.35 -0.02" size="0.025" rgba="0.5 0.5 0.5 1"/>
+      <geom name="leg4" type="cylinder" fromto="0.35 0.35 -0.4 0.35 0.35 -0.02" size="0.025" rgba="0.5 0.5 0.5 1"/>
+    </body>
+
+    <!-- Target object on table -->
+    <body name="target_obj" pos="0.25 0.0 0.45">
+      <geom name="target" type="sphere" size="0.03" material="target_mat" mass="0.1"/>
+      <joint name="target_free" type="free"/>
+    </body>
+
+    <!-- Robot base mounted on table -->
+    <body name="base" pos="0 0 0.42">
+      <geom name="base_geom" type="cylinder" size="0.06 0.02" material="link_mat" mass="2"/>
+
+      <!-- Joint 1: shoulder_pan (vertical axis rotation) -->
+      <body name="shoulder_pan_link" pos="0 0 0.04">
+        <joint name="shoulder_pan" type="hinge" axis="0 0 1"
+               range="-3.14159 3.14159" damping="8"/>
+        <geom name="shoulder_pan_geom" type="cylinder" fromto="0 0 0 0 0 0.08"
+              size="0.04" material="joint_mat" mass="1"/>
+
+        <!-- Joint 2: shoulder_lift (horizontal axis) -->
+        <body name="shoulder_lift_link" pos="0 0 0.08">
+          <joint name="shoulder_lift" type="hinge" axis="0 1 0"
+                 range="-3.14159 0" damping="8"/>
+          <geom name="shoulder_lift_geom" type="capsule" fromto="0 0 0 0 0 0.2"
+                size="0.035" material="link_mat" mass="1.5"/>
+
+          <!-- Joint 3: elbow -->
+          <body name="elbow_link" pos="0 0 0.2">
+            <joint name="elbow" type="hinge" axis="0 1 0"
+                   range="-3.14159 3.14159" damping="6"/>
+            <geom name="elbow_geom" type="capsule" fromto="0 0 0 0 0 0.15"
+                  size="0.03" material="joint_mat" mass="1"/>
+
+            <!-- Joint 4: wrist_1 -->
+            <body name="wrist_1_link" pos="0 0 0.15">
+              <joint name="wrist_1" type="hinge" axis="0 1 0"
+                     range="-3.14159 3.14159" damping="4"/>
+              <geom name="wrist_1_geom" type="capsule" fromto="0 0 0 0 0 0.08"
+                    size="0.025" material="link_mat" mass="0.5"/>
+
+              <!-- Joint 5: wrist_2 -->
+              <body name="wrist_2_link" pos="0 0 0.08">
+                <joint name="wrist_2" type="hinge" axis="0 0 1"
+                       range="-3.14159 3.14159" damping="4"/>
+                <geom name="wrist_2_geom" type="capsule" fromto="0 0 0 0 0 0.06"
+                      size="0.02" material="joint_mat" mass="0.3"/>
+
+                <!-- Joint 6: wrist_3 -->
+                <body name="wrist_3_link" pos="0 0 0.06">
+                  <joint name="wrist_3" type="hinge" axis="0 1 0"
+                         range="-6.28318 6.28318" damping="3"/>
+                  <geom name="wrist_3_geom" type="cylinder" size="0.022 0.01"
+                        material="link_mat" mass="0.2"/>
+
+                  <!-- Gripper base -->
+                  <body name="gripper_base" pos="0 0 0.015">
+                    <geom name="gripper_base_geom" type="box" size="0.03 0.02 0.005"
+                          material="gripper_mat" mass="0.1"/>
+
+                    <!-- Left finger -->
+                    <body name="finger_left" pos="0 -0.02 0.02">
+                      <joint name="finger_left_slide" type="slide" axis="0 1 0"
+                             range="-0.01 0.02" damping="2"/>
+                      <geom name="finger_left_geom" type="box" size="0.01 0.005 0.02"
+                            material="gripper_mat" mass="0.05"/>
+                    </body>
+
+                    <!-- Right finger -->
+                    <body name="finger_right" pos="0 0.02 0.02">
+                      <joint name="finger_right_slide" type="slide" axis="0 -1 0"
+                             range="-0.01 0.02" damping="2"/>
+                      <geom name="finger_right_geom" type="box" size="0.01 0.005 0.02"
+                            material="gripper_mat" mass="0.05"/>
+                    </body>
+
+                    <!-- Wrist-mounted camera looking down at workspace -->
+                    <camera name="cam0" pos="0 0 0.05" xyaxes="1 0 0 0 1 0"
+                            fovy="60"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Fixed overhead camera for a wider view -->
+    <camera name="overhead" pos="0.5 -0.5 1.2" xyaxes="0.707 0.707 0 -0.408 0.408 0.816"
+            fovy="50"/>
+
+    <!-- Lighting -->
+    <light name="top_light" pos="0 0 2" dir="0 0 -1" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3"/>
+    <light name="side_light" pos="1 -1 1.5" dir="-0.5 0.5 -0.5" diffuse="0.4 0.4 0.5"/>
+  </worldbody>
+
+  <actuator>
+    <position name="act_shoulder_pan"  joint="shoulder_pan"  kp="100" ctrlrange="-3.14159 3.14159"/>
+    <position name="act_shoulder_lift" joint="shoulder_lift" kp="100" ctrlrange="-3.14159 0"/>
+    <position name="act_elbow"         joint="elbow"         kp="80"  ctrlrange="-3.14159 3.14159"/>
+    <position name="act_wrist_1"       joint="wrist_1"       kp="60"  ctrlrange="-3.14159 3.14159"/>
+    <position name="act_wrist_2"       joint="wrist_2"       kp="60"  ctrlrange="-3.14159 3.14159"/>
+    <position name="act_wrist_3"       joint="wrist_3"       kp="40"  ctrlrange="-6.28318 6.28318"/>
+    <position name="act_finger_left"   joint="finger_left_slide"  kp="20" ctrlrange="-0.01 0.02"/>
+    <position name="act_finger_right"  joint="finger_right_slide" kp="20" ctrlrange="-0.01 0.02"/>
+  </actuator>
+</mujoco>

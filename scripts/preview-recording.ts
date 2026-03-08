@@ -45,8 +45,8 @@ async function convertDir(inputDir: string, outDir: string) {
   }
 
   console.log(`Converted ${converted} frames to PPM in ${outDir}`);
-  console.log(`\nTo view: open ${outDir}/*.ppm`);
-  console.log(`To make a video: ffmpeg -framerate 30 -i ${outDir}/%06d.ppm -c:v libx264 -pix_fmt yuv420p recording.mp4`);
+  console.log(`\nTo view:  open ${outDir}/cam0_000001.ppm`);
+  console.log(`To video: ffmpeg -framerate 30 -pattern_type glob -i '${outDir}/cam0_*.ppm' -c:v libx264 -pix_fmt yuv420p recording.mp4`);
 
   if (existsSync(join(inputDir, "..", "metadata.json"))) {
     const meta = JSON.parse(await readFile(join(inputDir, "..", "metadata.json"), "utf-8"));

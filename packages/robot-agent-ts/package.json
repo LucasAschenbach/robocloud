@@ -1,5 +1,5 @@
 {
-  "name": "@robocloud/robot-agent",
+  "name": "@robocloud/robot-agent-ts",
   "version": "0.1.0",
   "private": true,
   "type": "module",

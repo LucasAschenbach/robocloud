@@ -7,8 +7,8 @@ import {
   CommandSchema,
   type TelemetryFrame,
 } from "@robocloud/shared";
-import { SimulatorAdapter } from "@robocloud/robot-agent/src/adapters/simulator.js";
-import { RobotAgentProcess } from "@robocloud/robot-agent/src/robot-agent.js";
+import { SimulatorAdapter } from "@robocloud/robot-agent-ts/src/adapters/simulator.js";
+import { RobotAgentProcess } from "@robocloud/robot-agent-ts/src/robot-agent.js";
 
 let server: FastifyInstance;
 let serverUrl: string;

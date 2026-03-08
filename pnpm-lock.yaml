@@ -82,7 +82,7 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
-  packages/robot-agent:
+  packages/robot-agent-ts:
     dependencies:
       '@bufbuild/protobuf':
         specifier: ^2.11.0
@@ -128,9 +128,9 @@ importers:
       '@robocloud/api':
         specifier: workspace:*
         version: link:../api
-      '@robocloud/robot-agent':
+      '@robocloud/robot-agent-ts':
         specifier: workspace:*
-        version: link:../robot-agent
+        version: link:../robot-agent-ts
       '@robocloud/simulator':
         specifier: workspace:*
         version: link:../simulator

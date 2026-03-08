@@ -9,7 +9,8 @@ Client SDK ──REST + WS──▶ API Server ──WS (Protobuf)──▶ Robo
 ```
 
 - **API Server** (Fastify) — REST endpoints for auth, robots, sessions + WebSocket bridge for real-time control
-- **Robot Agent** — runs alongside the robot (or simulator), connects to the API via WebSocket, dispatches commands and streams telemetry
+- **Robot Agent (TypeScript)** — runs alongside the robot (or simulator), connects to the API via WebSocket, dispatches commands and streams telemetry
+- **Robot Agent (Python)** — parity implementation in Python, supports MuJoCo adapter with real rendered camera frames
 - **Simulator** — time-stepped physics loop with simulated arm (6-DOF) and mobile (2D wheeled) robots
 - **SDK** — TypeScript client for programmatic control
 - **Shared** — Protobuf-generated types, Zod schemas, adapter interfaces
@@ -74,13 +75,22 @@ cd packages/api
 pnpm dev
 ```
 
-### Run a simulated robot agent
+### Run a simulated robot agent (TypeScript — synthetic frames)
 
 In a second terminal:
 
 ```bash
-cd packages/robot-agent
+cd packages/robot-agent-ts
 ROBOT_AGENT_WS_URL=ws://localhost:3000 ROBOT_TYPE=arm6dof ROBOT_ID=sim-arm-001 pnpm dev
+```
+
+### Run a MuJoCo robot agent (Python — rendered camera frames)
+
+```bash
+cd packages/robot-agent-py
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+ROBOT_AGENT_WS_URL=ws://localhost:3000 ROBOT_TYPE=arm6dof ROBOT_ID=mujoco-arm6dof-001 python -m robocloud_agent.main
 ```
 
 ### Run tests
@@ -94,13 +104,14 @@ pnpm test
 
 ```
 packages/
-  shared/        Protobuf types, Zod schemas, RobotAdapter interface
-  api/           Fastify API server + WebSocket bridge + recorder
-  robot-agent/   Connects to API, dispatches commands to robot/simulator
-  simulator/     Time-stepped physics: Arm6DOF, Mobile2D
-  sdk/           Client SDK: RoboCloudClient, RoboCloudSession
+  shared/               Protobuf types, Zod schemas, RobotAdapter interface
+  api/                  Fastify API server + WebSocket bridge + recorder
+  robot-agent-ts/       TypeScript agent: connects to API, dispatches commands to simulator
+  robot-agent-py/       Python agent: MuJoCo adapter with real rendered camera frames
+  simulator/            Time-stepped physics: Arm6DOF, Mobile2D
+  sdk/                  Client SDK: RoboCloudClient, RoboCloudSession
 proto/
-  robocloud/v1/  .proto definitions (source of truth)
+  robocloud/v1/         .proto definitions (source of truth)
 ```
 
 ## REST API

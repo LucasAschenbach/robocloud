@@ -23,7 +23,7 @@
     "@types/ws": "^8.5.0",
     "vitest": "^3.0.0",
     "@robocloud/api": "workspace:*",
-    "@robocloud/robot-agent": "workspace:*",
+    "@robocloud/robot-agent-ts": "workspace:*",
     "@robocloud/simulator": "workspace:*"
   }
 }

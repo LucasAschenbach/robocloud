@@ -16,27 +16,6 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { existsSync } from "node:fs";
 
-const sessionId = process.argv[2];
-const outputDir = process.argv[3] ?? join("recordings", sessionId, "preview");
-
-if (!sessionId) {
-  console.error("Usage: npx tsx scripts/preview-recording.ts <session-id> [output-dir]");
-  process.exit(1);
-}
-
-const camerasDir = join("recordings", sessionId, "cameras");
-if (!existsSync(camerasDir)) {
-  const sdkCamerasDir = join("packages", "sdk", "recordings", sessionId, "cameras");
-  if (existsSync(sdkCamerasDir)) {
-    await convertDir(sdkCamerasDir, outputDir);
-  } else {
-    console.error(`No cameras directory found at ${camerasDir} or ${sdkCamerasDir}`);
-    process.exit(1);
-  }
-} else {
-  await convertDir(camerasDir, outputDir);
-}
-
 async function convertDir(inputDir: string, outDir: string) {
   await mkdir(outDir, { recursive: true });
 
@@ -88,3 +67,32 @@ async function convertDir(inputDir: string, outDir: string) {
     console.log(`  Command entries: ${cmdLines.length}`);
   }
 }
+
+async function main() {
+  const sessionId = process.argv[2];
+
+  if (!sessionId) {
+    console.error("Usage: npx tsx scripts/preview-recording.ts <session-id> [output-dir]");
+    process.exit(1);
+  }
+
+  const outputDir = process.argv[3] ?? join("recordings", sessionId, "preview");
+
+  const camerasDir = join("recordings", sessionId, "cameras");
+  if (!existsSync(camerasDir)) {
+    const sdkCamerasDir = join("packages", "sdk", "recordings", sessionId, "cameras");
+    if (existsSync(sdkCamerasDir)) {
+      await convertDir(sdkCamerasDir, outputDir);
+    } else {
+      console.error(`No cameras directory found at ${camerasDir} or ${sdkCamerasDir}`);
+      process.exit(1);
+    }
+  } else {
+    await convertDir(camerasDir, outputDir);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

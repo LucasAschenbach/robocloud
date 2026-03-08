@@ -16,14 +16,55 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { existsSync } from "node:fs";
 
-async function convertDir(inputDir: string, outDir: string) {
+async function detectDimensions(
+  inputDir: string,
+  metadataDir: string,
+  cameraName: string
+): Promise<{ width: number; height: number }> {
+  // 1. Try metadata.json cameras map (written by recorder for new sessions)
+  const metaPath = join(metadataDir, "metadata.json");
+  if (existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(await readFile(metaPath, "utf-8"));
+      const spec = meta?.cameras?.[cameraName];
+      if (spec?.width && spec?.height) {
+        return { width: spec.width, height: spec.height };
+      }
+    } catch { /* fall through */ }
+  }
+
+  // 2. Auto-detect from the first frame's byte length against common resolutions
+  const firstFile = (await readdir(inputDir)).filter((f) => f.endsWith(".raw")).sort()[0];
+  if (firstFile) {
+    const bytes = (await readFile(join(inputDir, firstFile))).length;
+    const pixels = bytes / 3;
+    const COMMON = [
+      { width: 64,   height: 64   },
+      { width: 128,  height: 128  },
+      { width: 160,  height: 120  },
+      { width: 256,  height: 256  },
+      { width: 320,  height: 240  },
+      { width: 640,  height: 480  },
+      { width: 1280, height: 720  },
+      { width: 1920, height: 1080 },
+    ];
+    const match = COMMON.find((r) => r.width * r.height === pixels);
+    if (match) return match;
+  }
+
+  // 3. Fall back to 64×64 with a warning
+  console.warn("Could not detect camera dimensions — defaulting to 64x64. Pass --width and --height if this is wrong.");
+  return { width: 64, height: 64 };
+}
+
+async function convertDir(inputDir: string, outDir: string, metadataDir: string, cameraName: string) {
   await mkdir(outDir, { recursive: true });
 
   const files = (await readdir(inputDir)).filter((f) => f.endsWith(".raw")).sort();
   console.log(`Found ${files.length} raw camera frames in ${inputDir}`);
 
-  const width = 64;
-  const height = 64;
+  const { width, height } = await detectDimensions(inputDir, metadataDir, cameraName);
+  console.log(`Camera dimensions: ${width}x${height}`);
   let converted = 0;
 
   for (const file of files) {
@@ -79,16 +120,17 @@ async function main() {
   const outputDir = process.argv[3] ?? join("recordings", sessionId, "preview");
 
   const camerasDir = join("recordings", sessionId, "cameras");
-  if (!existsSync(camerasDir)) {
-    const sdkCamerasDir = join("packages", "sdk", "recordings", sessionId, "cameras");
-    if (existsSync(sdkCamerasDir)) {
-      await convertDir(sdkCamerasDir, outputDir);
-    } else {
-      console.error(`No cameras directory found at ${camerasDir} or ${sdkCamerasDir}`);
-      process.exit(1);
-    }
+  const sdkCamerasDir = join("packages", "sdk", "recordings", sessionId, "cameras");
+
+  if (existsSync(camerasDir)) {
+    const metaDir = join("recordings", sessionId);
+    await convertDir(camerasDir, outputDir, metaDir, "cam0");
+  } else if (existsSync(sdkCamerasDir)) {
+    const metaDir = join("packages", "sdk", "recordings", sessionId);
+    await convertDir(sdkCamerasDir, outputDir, metaDir, "cam0");
   } else {
-    await convertDir(camerasDir, outputDir);
+    console.error(`No cameras directory found at ${camerasDir} or ${sdkCamerasDir}`);
+    process.exit(1);
   }
 }
 

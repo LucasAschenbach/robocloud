@@ -1,6 +1,6 @@
 import { createReadStream, existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep, normalize } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { authenticate, getUser } from "../services/auth.js";
 import { sessionManager } from "../services/session-manager.js";
@@ -69,10 +69,15 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  app.get<{ Params: { id: string; stream: string } }>(
-    "/sessions/:id/recording/:stream",
+  // Wildcard route: serves any file inside the recording directory.
+  // Supports short aliases (e.g. "telemetry" → "telemetry.jsonl") as well as
+  // direct relative paths returned by the info endpoint (e.g. "cameras/cam0_000001.raw").
+  app.get(
+    "/sessions/:id/recording/*",
     async (request, reply) => {
-      const session = sessionManager.getSession(request.params.id);
+      const { id } = request.params as { id: string };
+
+      const session = sessionManager.getSession(id);
       if (!session) {
         return reply.code(404).send({
           error: "Not Found",
@@ -90,7 +95,10 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const streamMap: Record<string, string> = {
+      const streamParam = (request.params as Record<string, string>)["*"] ?? "";
+
+      // Short aliases for backward compatibility
+      const streamAliases: Record<string, string> = {
         "commands": "commands.jsonl",
         "commands.binlog": "commands.binlog",
         "telemetry": "telemetry.jsonl",
@@ -98,27 +106,31 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
         "metadata": "metadata.json",
       };
 
-      const filename = streamMap[request.params.stream];
-      if (!filename) {
+      const relativePath = streamAliases[streamParam] ?? streamParam;
+
+      // Prevent path traversal
+      const basePath = join(process.cwd(), "recordings", id);
+      const filePath = normalize(join(basePath, relativePath));
+      if (!filePath.startsWith(basePath + sep) && filePath !== basePath) {
         return reply.code(400).send({
           error: "Bad Request",
-          message: `Unknown stream: ${request.params.stream}. Valid: ${Object.keys(streamMap).join(", ")}`,
+          message: "Invalid path",
           statusCode: 400,
         });
       }
 
-      const filePath = join(process.cwd(), "recordings", request.params.id, filename);
       if (!existsSync(filePath)) {
         return reply.code(404).send({
           error: "Not Found",
-          message: `Stream file not found: ${filename}`,
+          message: `File not found: ${relativePath}`,
           statusCode: 404,
         });
       }
 
-      const contentType = filename.endsWith(".json") || filename.endsWith(".jsonl")
-        ? "application/json"
-        : "application/octet-stream";
+      const contentType =
+        relativePath.endsWith(".json") || relativePath.endsWith(".jsonl")
+          ? "application/json"
+          : "application/octet-stream";
 
       reply.header("Content-Type", contentType);
       return reply.send(createReadStream(filePath));

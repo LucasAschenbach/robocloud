@@ -12,6 +12,11 @@ interface RecordingEntry {
   subType?: string;
 }
 
+interface CameraSpec {
+  width: number;
+  height: number;
+}
+
 export class SessionRecorder {
   private sessionId: string;
   private basePath: string;
@@ -20,6 +25,7 @@ export class SessionRecorder {
   private commandBinChunks: Uint8Array[] = [];
   private telemetryBinChunks: Uint8Array[] = [];
   private cameraFrameCount = 0;
+  private cameraSpecs = new Map<string, CameraSpec>();
   private isActive = false;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private metadata: Record<string, unknown>;
@@ -78,6 +84,10 @@ export class SessionRecorder {
           this.cameraFrameCount++;
           const filename = `${camera.cameraName}_${String(this.cameraFrameCount).padStart(6, "0")}.raw`;
           writeFile(join(this.basePath, "cameras", filename), camera.data).catch(() => {});
+
+          if (!this.cameraSpecs.has(camera.cameraName) && camera.width > 0 && camera.height > 0) {
+            this.cameraSpecs.set(camera.cameraName, { width: camera.width, height: camera.height });
+          }
         }
       }
     }
@@ -120,6 +130,9 @@ export class SessionRecorder {
 
     this.metadata["endTime"] = new Date().toISOString();
     this.metadata["totalCameraFrames"] = this.cameraFrameCount;
+    if (this.cameraSpecs.size > 0) {
+      this.metadata["cameras"] = Object.fromEntries(this.cameraSpecs);
+    }
     await writeFile(
       join(this.basePath, "metadata.json"),
       JSON.stringify(this.metadata, null, 2)

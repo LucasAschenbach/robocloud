@@ -27,7 +27,12 @@ async function main(): Promise<void> {
     max: 100,
     timeWindow: "1 minute",
     allowList: (request) => {
-      return request.url.includes("/agent") || request.url.includes("/control");
+      const url = request.url;
+      return (
+        url.includes("/agent") ||
+        url.includes("/control") ||
+        url.includes("/recording/")  // bulk file downloads; not API calls
+      );
     },
   });
 

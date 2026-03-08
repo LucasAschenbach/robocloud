@@ -1,0 +1,24 @@
+{
+  "name": "@robocloud/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "robocloud": "./dist/bin.js"
+  },
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/bin.js', 0o755)\"",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@robocloud/sdk": "workspace:*",
+    "@robocloud/shared": "workspace:*",
+    "chalk": "^5.4.0",
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

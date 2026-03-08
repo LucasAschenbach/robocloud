@@ -1,0 +1,99 @@
+syntax = "proto3";
+package robocloud.v1;
+
+import "robocloud/v1/common.proto";
+
+message Envelope {
+  uint64 sequence = 1;
+  uint64 timestamp_us = 2;
+  string session_id = 3;
+  oneof payload {
+    Command command = 10;
+    TelemetryFrame telemetry = 11;
+    SessionControl session_control = 12;
+  }
+}
+
+// --- Commands (client -> robot) ---
+
+message Command {
+  oneof command {
+    JointPositionCommand joint_position = 1;
+    JointVelocityCommand joint_velocity = 2;
+    EndEffectorPoseCommand end_effector_pose = 3;
+    GripperCommand gripper = 4;
+    VelocityCommand velocity = 5;
+  }
+}
+
+message JointPositionCommand {
+  map<string, double> positions = 1;
+}
+
+message JointVelocityCommand {
+  map<string, double> velocities = 1;
+}
+
+message EndEffectorPoseCommand {
+  Pose6D target_pose = 1;
+  double speed = 2;
+}
+
+message GripperCommand {
+  double openness = 1;
+}
+
+message VelocityCommand {
+  Vec3 linear = 1;
+  Vec3 angular = 2;
+}
+
+// --- Telemetry (robot -> client) ---
+
+message TelemetryFrame {
+  uint64 timestamp_us = 1;
+  map<string, JointState> joint_states = 2;
+  Pose6D base_pose = 3;
+  repeated CameraFrame cameras = 4;
+}
+
+message JointState {
+  double position = 1;
+  double velocity = 2;
+  double torque = 3;
+}
+
+message CameraFrame {
+  string camera_name = 1;
+  bytes data = 2;
+  string format = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+}
+
+// --- Session Control ---
+
+message SessionControl {
+  oneof control {
+    SessionStart start = 1;
+    SessionStop stop = 2;
+    SessionPause pause = 3;
+    SessionResume resume = 4;
+    Heartbeat heartbeat = 10;
+  }
+}
+
+message SessionStart {
+  string robot_id = 1;
+  bool record = 2;
+}
+
+message SessionStop {}
+
+message SessionPause {}
+
+message SessionResume {}
+
+message Heartbeat {
+  uint64 timestamp_us = 1;
+}

@@ -1,0 +1,20 @@
+syntax = "proto3";
+package robocloud.v1;
+
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message Quaternion {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double w = 4;
+}
+
+message Pose6D {
+  Vec3 position = 1;
+  Quaternion orientation = 2;
+}

@@ -1,0 +1,49 @@
+syntax = "proto3";
+package robocloud.v1;
+
+import "robocloud/v1/common.proto";
+
+enum Mobility {
+  MOBILITY_UNSPECIFIED = 0;
+  MOBILITY_FIXED = 1;
+  MOBILITY_WHEELED = 2;
+  MOBILITY_LEGGED = 3;
+}
+
+message JointSpec {
+  string name = 1;
+  double min_position = 2;
+  double max_position = 3;
+  double max_velocity = 4;
+  double max_torque = 5;
+}
+
+message CameraSpec {
+  string name = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  uint32 fps = 4;
+}
+
+message RobotCapabilities {
+  repeated JointSpec joints = 1;
+  bool end_effector = 2;
+  repeated CameraSpec cameras = 3;
+  Mobility mobility = 4;
+}
+
+message RobotInfo {
+  string id = 1;
+  string name = 2;
+  string model = 3;
+  RobotCapabilities capabilities = 4;
+  RobotStatus status = 5;
+}
+
+enum RobotStatus {
+  ROBOT_STATUS_UNSPECIFIED = 0;
+  ROBOT_STATUS_AVAILABLE = 1;
+  ROBOT_STATUS_IN_SESSION = 2;
+  ROBOT_STATUS_OFFLINE = 3;
+  ROBOT_STATUS_MAINTENANCE = 4;
+}

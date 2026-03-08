@@ -1,0 +1,127 @@
+import { createReadStream, existsSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+import type { FastifyInstance } from "fastify";
+import { authenticate, getUser } from "../services/auth.js";
+import { sessionManager } from "../services/session-manager.js";
+
+export async function recordingRoutes(app: FastifyInstance): Promise<void> {
+  app.addHook("onRequest", authenticate);
+
+  app.get<{ Params: { id: string } }>(
+    "/sessions/:id/recording",
+    async (request, reply) => {
+      const session = sessionManager.getSession(request.params.id);
+      if (!session) {
+        return reply.code(404).send({
+          error: "Not Found",
+          message: "Session not found",
+          statusCode: 404,
+        });
+      }
+
+      const user = getUser(request);
+      if (session.userId !== user.id) {
+        return reply.code(403).send({
+          error: "Forbidden",
+          message: "Not your session",
+          statusCode: 403,
+        });
+      }
+
+      const basePath = join(process.cwd(), "recordings", request.params.id);
+      if (!existsSync(basePath)) {
+        return reply.code(404).send({
+          error: "Not Found",
+          message: "No recording found for this session",
+          statusCode: 404,
+        });
+      }
+
+      try {
+        const metadataPath = join(basePath, "metadata.json");
+        const metadata = existsSync(metadataPath)
+          ? JSON.parse(await readFile(metadataPath, "utf-8"))
+          : {};
+
+        const files = await readdir(basePath, { recursive: true });
+        const fileList: string[] = [];
+        for (const f of files) {
+          const filePath = join(basePath, f.toString());
+          const s = await stat(filePath);
+          if (s.isFile()) {
+            fileList.push(f.toString());
+          }
+        }
+
+        return reply.send({
+          sessionId: request.params.id,
+          metadata,
+          files: fileList,
+        });
+      } catch (err) {
+        return reply.code(500).send({
+          error: "Internal Server Error",
+          message: "Failed to read recording",
+          statusCode: 500,
+        });
+      }
+    }
+  );
+
+  app.get<{ Params: { id: string; stream: string } }>(
+    "/sessions/:id/recording/:stream",
+    async (request, reply) => {
+      const session = sessionManager.getSession(request.params.id);
+      if (!session) {
+        return reply.code(404).send({
+          error: "Not Found",
+          message: "Session not found",
+          statusCode: 404,
+        });
+      }
+
+      const user = getUser(request);
+      if (session.userId !== user.id) {
+        return reply.code(403).send({
+          error: "Forbidden",
+          message: "Not your session",
+          statusCode: 403,
+        });
+      }
+
+      const streamMap: Record<string, string> = {
+        "commands": "commands.jsonl",
+        "commands.binlog": "commands.binlog",
+        "telemetry": "telemetry.jsonl",
+        "telemetry.binlog": "telemetry.binlog",
+        "metadata": "metadata.json",
+      };
+
+      const filename = streamMap[request.params.stream];
+      if (!filename) {
+        return reply.code(400).send({
+          error: "Bad Request",
+          message: `Unknown stream: ${request.params.stream}. Valid: ${Object.keys(streamMap).join(", ")}`,
+          statusCode: 400,
+        });
+      }
+
+      const filePath = join(process.cwd(), "recordings", request.params.id, filename);
+      if (!existsSync(filePath)) {
+        return reply.code(404).send({
+          error: "Not Found",
+          message: `Stream file not found: ${filename}`,
+          statusCode: 404,
+        });
+      }
+
+      const contentType = filename.endsWith(".json") || filename.endsWith(".jsonl")
+        ? "application/json"
+        : "application/octet-stream";
+
+      reply.header("Content-Type", contentType);
+      return reply.send(createReadStream(filePath));
+    }
+  );
+}

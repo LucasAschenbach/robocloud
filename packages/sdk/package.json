@@ -1,0 +1,29 @@
+{
+  "name": "@robocloud/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.11.0",
+    "@robocloud/shared": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "vitest": "^3.0.0",
+    "@robocloud/api": "workspace:*",
+    "@robocloud/robot-agent": "workspace:*",
+    "@robocloud/simulator": "workspace:*"
+  }
+}

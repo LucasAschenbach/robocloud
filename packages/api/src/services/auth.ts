@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
-import { supabaseAdmin, supabaseAnon } from "../db/supabase.js";
+import { getSupabaseAdmin, getSupabaseAnon } from "../db/supabase.js";
 import { config } from "../config.js";
 
 export interface AuthUser {
@@ -11,6 +11,14 @@ export async function authenticate(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
+  if (!config.supabaseConfigured) {
+    (request as FastifyRequest & { user: AuthUser }).user = {
+      id: "dev-user",
+      email: "dev@robocloud.local",
+    };
+    return;
+  }
+
   const authHeader = request.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     reply.code(401).send({ error: "Unauthorized", message: "Missing Bearer token", statusCode: 401 });
@@ -20,7 +28,7 @@ export async function authenticate(
   const token = authHeader.slice(7);
 
   try {
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    const { data, error } = await getSupabaseAdmin().auth.getUser(token);
     if (error || !data.user) {
       reply.code(401).send({ error: "Unauthorized", message: "Invalid token", statusCode: 401 });
       return;
@@ -43,7 +51,7 @@ export async function signup(
   email: string,
   password: string
 ): Promise<{ accessToken: string; refreshToken?: string; expiresAt: number }> {
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+  const { data, error } = await getSupabaseAdmin().auth.admin.createUser({
     email,
     password,
     email_confirm: true,
@@ -59,7 +67,7 @@ export async function login(
   email: string,
   password: string
 ): Promise<{ accessToken: string; refreshToken?: string; expiresAt: number }> {
-  const { data, error } = await supabaseAnon.auth.signInWithPassword({
+  const { data, error } = await getSupabaseAnon().auth.signInWithPassword({
     email,
     password,
   });

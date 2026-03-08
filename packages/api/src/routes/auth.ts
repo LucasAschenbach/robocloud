@@ -1,9 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import { signupSchema, loginSchema } from "@robocloud/shared";
 import { signup, login } from "../services/auth.js";
+import { config } from "../config.js";
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/auth/signup", async (request, reply) => {
+    if (!config.supabaseConfigured) {
+      return reply.code(501).send({
+        error: "Not Implemented",
+        message: "Auth is disabled — Supabase is not configured. Set SUPABASE_SERVICE_ROLE_KEY in .env. All other routes work without auth in dev mode.",
+        statusCode: 501,
+      });
+    }
+
     const parsed = signupSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({
@@ -27,6 +36,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/auth/login", async (request, reply) => {
+    if (!config.supabaseConfigured) {
+      return reply.code(501).send({
+        error: "Not Implemented",
+        message: "Auth is disabled — Supabase is not configured. Set SUPABASE_SERVICE_ROLE_KEY in .env. All other routes work without auth in dev mode.",
+        statusCode: 501,
+      });
+    }
+
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({

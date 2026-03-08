@@ -3,21 +3,28 @@ import postgres from "postgres";
 import { config } from "../config.js";
 import * as schema from "./schema.js";
 
-const connectionString = config.supabase.url
-  ? `${config.supabase.url.replace("https://", "postgresql://postgres:postgres@").replace(".supabase.co", ".supabase.co:5432")}/postgres`
-  : "postgresql://postgres:postgres@localhost:5432/postgres";
+let _sql: ReturnType<typeof postgres> | null = null;
+let _db: ReturnType<typeof drizzle> | null = null;
 
-let sql: ReturnType<typeof postgres>;
-let db: ReturnType<typeof drizzle>;
+export function getDb() {
+  if (!_db) {
+    const connectionString = config.supabase.url
+      ? `${config.supabase.url.replace("https://", "postgresql://postgres:postgres@").replace(".supabase.co", ".supabase.co:5432")}/postgres`
+      : "postgresql://postgres:postgres@localhost:5432/postgres";
 
-try {
-  sql = postgres(connectionString, { max: 10 });
-  db = drizzle(sql, { schema });
-} catch {
-  console.warn("[db] Could not connect to PostgreSQL, running in memory-only mode");
-  sql = null as unknown as ReturnType<typeof postgres>;
-  db = null as unknown as ReturnType<typeof drizzle>;
+    try {
+      _sql = postgres(connectionString, { max: 10 });
+      _db = drizzle(_sql, { schema });
+    } catch {
+      console.warn("[db] Could not connect to PostgreSQL, running in memory-only mode");
+    }
+  }
+  return _db;
 }
 
-export { db, sql };
+export function getSql() {
+  if (!_sql) getDb();
+  return _sql;
+}
+
 export { schema };

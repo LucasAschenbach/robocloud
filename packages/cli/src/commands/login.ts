@@ -28,7 +28,11 @@ export function registerLoginCommands(program: Command): void {
         const auth = await client.login(email, password);
 
         const config = await loadConfig();
-        await updateConfig({ ...config, accessToken: auth.accessToken });
+        await updateConfig({
+          ...config,
+          accessToken: auth.accessToken,
+          tokenExpiresAt: auth.expiresAt,
+        });
 
         console.log(chalk.green("✓ Logged in successfully."));
       } catch (err) {
@@ -50,7 +54,11 @@ export function registerLoginCommands(program: Command): void {
         const auth = await client.signup(email, password);
 
         const config = await loadConfig();
-        await updateConfig({ ...config, accessToken: auth.accessToken });
+        await updateConfig({
+          ...config,
+          accessToken: auth.accessToken,
+          tokenExpiresAt: auth.expiresAt,
+        });
 
         console.log(chalk.green("✓ Account created and logged in."));
       } catch (err) {

@@ -18,7 +18,25 @@ export function registerConfigCommands(program: Command): void {
         if (cfg.accessToken) {
           const preview = cfg.accessToken.slice(0, 12) + "…";
           console.log(`${chalk.bold("Access token:")} ${chalk.dim(preview)}`);
-          console.log(chalk.green("✓ Authenticated"));
+
+          if (cfg.tokenExpiresAt) {
+            const expiresAt = new Date(cfg.tokenExpiresAt * 1000);
+            const nowMs = Date.now();
+            const diffMs = expiresAt.getTime() - nowMs;
+            if (diffMs <= 0) {
+              console.log(chalk.red(`✗ Token expired at ${expiresAt.toLocaleString()} — run \`robocloud login\``));
+            } else {
+              const diffMins = Math.round(diffMs / 60_000);
+              const diffHours = Math.floor(diffMins / 60);
+              const remaining =
+                diffHours >= 1
+                  ? `${diffHours}h ${diffMins % 60}m`
+                  : `${diffMins}m`;
+              console.log(chalk.green(`✓ Authenticated`) + chalk.dim(` (expires in ${remaining})`));
+            }
+          } else {
+            console.log(chalk.green("✓ Token stored") + chalk.dim(" (expiry unknown — may be a dev token)"));
+          }
         } else {
           console.log(`${chalk.bold("Access token:")} ${chalk.dim("(none)")}`);
           console.log(chalk.yellow("Not authenticated. Run `robocloud login`."));

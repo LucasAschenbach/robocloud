@@ -1,12 +1,18 @@
 import chalk from "chalk";
 import { createInterface } from "node:readline";
 import { RoboCloudClient } from "@robocloud/sdk";
-import { loadConfig } from "./config.js";
+import { loadConfig, clearToken } from "./config.js";
 
 export async function getClient(): Promise<RoboCloudClient> {
   const config = await loadConfig();
   if (!config.accessToken) {
     console.error(chalk.red("Not authenticated. Run `robocloud login` first."));
+    process.exit(1);
+  }
+  if (config.tokenExpiresAt && Date.now() / 1000 > config.tokenExpiresAt) {
+    await clearToken().catch(() => {});
+    console.error(chalk.red("Your session has expired."));
+    console.error(chalk.yellow("Run `robocloud login` to authenticate again."));
     process.exit(1);
   }
   return new RoboCloudClient({
@@ -38,6 +44,20 @@ export async function handleError(err: unknown): Promise<never> {
   }
 
   const msg = err instanceof Error ? err.message : String(err);
+
+  // 401 — token expired or invalid; clear the stored token so the next run
+  // doesn't re-enter this path silently.
+  const is401 =
+    msg === "Invalid token" ||
+    msg === "Missing Bearer token" ||
+    msg === "Token validation failed" ||
+    msg === "Unauthorized";
+  if (is401) {
+    await clearToken().catch(() => {});
+    console.error(chalk.red("Error: Your session has expired or the token is invalid."));
+    console.error(chalk.yellow("\nRun `robocloud login` to authenticate again."));
+    process.exit(1);
+  }
 
   // 501 means auth is disabled (no Supabase configured) — give a dev-mode hint
   if (msg.includes("Supabase is not configured") || msg.includes("Auth is disabled")) {

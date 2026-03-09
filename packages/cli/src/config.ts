@@ -6,6 +6,8 @@ import { homedir } from "node:os";
 export interface CliConfig {
   baseUrl: string;
   accessToken?: string;
+  /** Unix timestamp (seconds) when the access token expires, as returned by the API. */
+  tokenExpiresAt?: number;
 }
 
 const DEFAULT_BASE_URL = "http://localhost:3000";
@@ -46,5 +48,6 @@ export async function updateConfig(partial: Partial<CliConfig>): Promise<CliConf
 export async function clearToken(): Promise<void> {
   const current = await loadConfig();
   delete current.accessToken;
+  delete current.tokenExpiresAt;
   await saveConfig(current);
 }

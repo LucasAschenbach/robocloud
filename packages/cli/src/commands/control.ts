@@ -1,30 +1,26 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { createInterface } from "node:readline";
+import blessed from "blessed";
 import type { TelemetryFrame } from "@robocloud/shared";
 import { RoboCloudClient, type RoboCloudSession } from "@robocloud/sdk";
 import { getClient, handleError } from "../util.js";
 import { loadConfig } from "../config.js";
 
-const HELP_TEXT = `
-${chalk.bold("Interactive control REPL")}
-
-Commands:
-  ${chalk.cyan("j <joint> <value>")}      Set a single joint position (radians)
-                         e.g. j shoulder_pan 0.5
-  ${chalk.cyan("joints <j1=v1> ...")}     Set multiple joints at once
-                         e.g. joints shoulder_pan=0.5 elbow=-0.3
-  ${chalk.cyan("gripper <0-1>")}          Set gripper openness (0 = closed, 1 = open)
-  ${chalk.cyan("telemetry")}              Toggle live telemetry display
-  ${chalk.cyan("help")}                   Show this help
-  ${chalk.cyan("q")} or ${chalk.cyan("exit")}             Disconnect and exit
-`;
+const HELP_LINES = [
+  chalk.bold("Commands"),
+  "",
+  `  ${chalk.cyan("j <joint> <value>")}      Set a single joint (radians)  e.g. j shoulder_pan 0.5`,
+  `  ${chalk.cyan("joints <j1=v1> ...")}     Set multiple joints            e.g. joints elbow=0.8 wrist_1=-0.3`,
+  `  ${chalk.cyan("gripper <0-1>")}          Set gripper openness (0=closed, 1=open)`,
+  `  ${chalk.cyan("help")}                   Show this help`,
+  `  ${chalk.cyan("q")} / ${chalk.cyan("exit")}               Disconnect and exit`,
+];
 
 export function registerControlCommand(program: Command): void {
   program
     .command("control <sessionId>")
     .description(
-      "Open an interactive real-time control session (WebSocket REPL)"
+      "Open an interactive real-time control session (split-pane TUI)"
     )
     .option("--end-on-exit", "Also end the session when you quit")
     .action(
@@ -33,114 +29,189 @@ export function registerControlCommand(program: Command): void {
           const client = await getClient();
           const config = await loadConfig();
 
-          console.log(chalk.dim(`Fetching session ${sessionId}…`));
+          process.stdout.write(chalk.dim(`Fetching session ${sessionId}…\n`));
           const sessionData = await client.getSession(sessionId);
 
-          console.log(chalk.dim(`Connecting to WebSocket…`));
+          process.stdout.write(chalk.dim(`Connecting to WebSocket…\n`));
           const session = await createConnectedSession(
             client,
             config.accessToken!,
             sessionData
           );
 
-          console.log(chalk.green(`✓ Connected to session ${sessionId}`));
-          console.log(
-            chalk.dim(
-              `Robot: ${sessionData.robotId} | Status: ${sessionData.status}`
-            )
-          );
-          console.log(HELP_TEXT);
-
-          let showTelemetry = true;
-          let lastTelemetry: TelemetryFrame | null = null;
-          let telemetryTimer: ReturnType<typeof setInterval> | null = null;
-
-          // Throttle telemetry display to ~2Hz
-          session.onTelemetry((frame) => {
-            lastTelemetry = frame;
+          // ── Build the blessed TUI ──────────────────────────────────────
+          const screen = blessed.screen({
+            smartCSR: true,
+            title: `RoboCloud — ${sessionId}`,
+            fullUnicode: true,
+            forceUnicode: true,
           });
 
-          telemetryTimer = setInterval(() => {
-            if (showTelemetry && lastTelemetry) {
-              printTelemetry(lastTelemetry);
-            }
-          }, 500);
+          const telemetryBox = blessed.box({
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "60%",
+            border: { type: "line" },
+            label: ` Telemetry — ${sessionData.robotId} `,
+            padding: { left: 1, right: 1 },
+            tags: false,
+            content: chalk.dim("Waiting for telemetry…"),
+          });
+
+          const logBox = blessed.log({
+            top: "60%",
+            left: 0,
+            width: "100%",
+            // Remaining height minus the 3-line input box at the bottom
+            height: "40%-3",
+            border: { type: "line" },
+            label: " Log ",
+            padding: { left: 1, right: 0 },
+            scrollable: true,
+            alwaysScroll: true,
+            scrollback: 500,
+            tags: false,
+            scrollbar: {
+              ch: "│",
+              style: { fg: "cyan" },
+            },
+          });
+
+          const inputBox = blessed.textbox({
+            bottom: 0,
+            left: 0,
+            width: "100%",
+            height: 3,
+            border: { type: "line" },
+            label: ` ${chalk.cyan("robocloud")} `,
+            padding: { left: 1, right: 1 },
+            inputOnFocus: true,
+            keys: true,
+            mouse: true,
+          });
+
+          screen.append(telemetryBox);
+          screen.append(logBox);
+          screen.append(inputBox);
+
+          // Show help on start
+          for (const line of HELP_LINES) logBox.log(line);
+          logBox.log("");
+          logBox.log(
+            chalk.green(`✓ Connected`) +
+              chalk.dim(` — session ${sessionId} | robot ${sessionData.robotId}`)
+          );
+          logBox.log("");
+
+          inputBox.focus();
+          screen.render();
+
+          // ── Telemetry ─────────────────────────────────────────────────
+          let frameCount = 0;
+
+          session.onTelemetry((frame) => {
+            frameCount++;
+            telemetryBox.setContent(formatTelemetry(frame, frameCount));
+            screen.render();
+          });
 
           session.onDisconnect((code, reason) => {
-            if (telemetryTimer) clearInterval(telemetryTimer);
-            console.log(
+            logBox.log(
               chalk.yellow(
-                `\nDisconnected (code ${code}${reason ? `: ${reason}` : ""})`
+                `Disconnected (code ${code}${reason ? `: ${reason}` : ""})`
               )
             );
-            rl.close();
+            screen.render();
           });
 
           session.onError((err) => {
-            console.error(chalk.red(`\nWebSocket error: ${err.message}`));
+            logBox.log(chalk.red(`WebSocket error: ${err.message}`));
+            screen.render();
           });
 
-          const rl = createInterface({
-            input: process.stdin,
-            output: process.stdout,
-            prompt: chalk.cyan("robocloud> "),
+          // ── Command history ───────────────────────────────────────────
+          const history: string[] = [];
+          let historyIdx = -1;
+
+          inputBox.key(["up"], () => {
+            if (history.length === 0) return;
+            historyIdx = Math.min(historyIdx + 1, history.length - 1);
+            inputBox.setValue(history[history.length - 1 - historyIdx]);
+            screen.render();
           });
 
-          rl.prompt();
-
-          rl.on("line", async (line: string) => {
-            const trimmed = line.trim();
-            if (!trimmed) {
-              rl.prompt();
-              return;
+          inputBox.key(["down"], () => {
+            if (historyIdx <= 0) {
+              historyIdx = -1;
+              inputBox.setValue("");
+            } else {
+              historyIdx--;
+              inputBox.setValue(history[history.length - 1 - historyIdx]);
             }
-
-            const handled = handleControlInput(
-              trimmed,
-              session,
-              showTelemetry,
-              (val) => {
-                showTelemetry = val;
-              }
-            );
-
-            if (handled === "quit") {
-              if (telemetryTimer) clearInterval(telemetryTimer);
-              await session.disconnect();
-              if (opts.endOnExit) {
-                await client.endSession(sessionId).catch(() => {});
-                console.log(chalk.green(`✓ Session ${sessionId} ended.`));
-              }
-              rl.close();
-              process.exit(0);
-            }
-
-            rl.prompt();
+            screen.render();
           });
 
-          rl.on("close", async () => {
-            if (telemetryTimer) clearInterval(telemetryTimer);
-            if (session.isConnected()) {
-              await session.disconnect();
-              if (opts.endOnExit) {
-                await client.endSession(sessionId).catch(() => {});
-                console.log(chalk.green(`✓ Session ${sessionId} ended.`));
-              }
-            }
-            process.exit(0);
-          });
+          // ── Helpers ───────────────────────────────────────────────────
+          const log = (msg: string) => {
+            logBox.log(msg);
+            screen.render();
+          };
 
-          // Handle Ctrl+C
-          process.on("SIGINT", async () => {
-            console.log("\nInterrupted.");
-            if (telemetryTimer) clearInterval(telemetryTimer);
+          const cleanup = async () => {
+            screen.destroy();
             if (session.isConnected()) {
               await session.disconnect();
             }
             if (opts.endOnExit) {
               await client.endSession(sessionId).catch(() => {});
+              process.stdout.write(
+                chalk.green(`✓ Session ${sessionId} ended.\n`)
+              );
             }
+          };
+
+          // ── Input submission ──────────────────────────────────────────
+          inputBox.on("submit", async (text: string) => {
+            const trimmed = text.trim();
+            historyIdx = -1;
+
+            if (trimmed) {
+              history.push(trimmed);
+              logBox.log(chalk.cyan(`> ${trimmed}`));
+
+              const result = handleControlInput(trimmed, session, log);
+              if (result === "quit") {
+                await cleanup();
+                process.exit(0);
+              }
+            }
+
+            inputBox.clearValue();
+            inputBox.focus();
+            screen.render();
+          });
+
+          inputBox.on("cancel", () => {
+            inputBox.clearValue();
+            inputBox.focus();
+            screen.render();
+          });
+
+          // ── Global key bindings ───────────────────────────────────────
+          screen.key(["C-c"], async () => {
+            await cleanup();
             process.exit(0);
+          });
+
+          // Page up/down to scroll the log without leaving the input box
+          screen.key(["pageup"], () => {
+            logBox.scroll(-Math.floor((logBox.height as number) / 2));
+            screen.render();
+          });
+          screen.key(["pagedown"], () => {
+            logBox.scroll(Math.floor((logBox.height as number) / 2));
+            screen.render();
           });
         } catch (err) {
           handleError(err);
@@ -154,10 +225,6 @@ async function createConnectedSession(
   accessToken: string,
   sessionData: import("@robocloud/shared").SessionResponse
 ): Promise<RoboCloudSession> {
-  // createSession does an HTTP POST, but we already have the session.
-  // Instead we reconstruct a RoboCloudSession from the existing session data
-  // by using the SDK's internal path. The SDK only exposes createSession, so
-  // we call getSession to get the wsEndpoint and build the session manually.
   const { RoboCloudSession } = await import("@robocloud/sdk");
   const session = new RoboCloudSession(
     sessionData,
@@ -171,8 +238,7 @@ async function createConnectedSession(
 function handleControlInput(
   input: string,
   session: RoboCloudSession,
-  showTelemetry: boolean,
-  setShowTelemetry: (val: boolean) => void
+  log: (msg: string) => void
 ): "quit" | "ok" {
   const parts = input.split(/\s+/);
   const cmd = parts[0].toLowerCase();
@@ -184,34 +250,23 @@ function handleControlInput(
       return "quit";
 
     case "help":
-      console.log(HELP_TEXT);
-      break;
-
-    case "telemetry":
-      setShowTelemetry(!showTelemetry);
-      console.log(
-        showTelemetry
-          ? chalk.dim("Telemetry display off.")
-          : chalk.dim("Telemetry display on.")
-      );
+      for (const line of HELP_LINES) log(line);
       break;
 
     case "j": {
       const joint = parts[1];
       const value = parseFloat(parts[2]);
       if (!joint || isNaN(value)) {
-        console.log(
-          chalk.yellow("Usage: j <joint_name> <value>  e.g. j shoulder_pan 0.5")
-        );
+        log(chalk.yellow("Usage: j <joint_name> <value>  e.g. j shoulder_pan 0.5"));
         break;
       }
       try {
         session.sendJointPositions({ [joint]: value });
-        console.log(chalk.dim(`→ ${joint} = ${value}`));
+        log(chalk.dim(`  ← ${joint} = ${value}`));
       } catch (err) {
-        console.log(
+        log(
           chalk.red(
-            `Send failed: ${err instanceof Error ? err.message : String(err)}`
+            `  Send failed: ${err instanceof Error ? err.message : String(err)}`
           )
         );
       }
@@ -223,22 +278,18 @@ function handleControlInput(
       for (const pair of parts.slice(1)) {
         const [name, val] = pair.split("=");
         if (!name || val === undefined) {
-          console.log(chalk.yellow(`Invalid pair: "${pair}". Use name=value.`));
+          log(chalk.yellow(`  Invalid pair: "${pair}". Use name=value.`));
           return "ok";
         }
         const num = parseFloat(val);
         if (isNaN(num)) {
-          console.log(chalk.yellow(`Non-numeric value for "${name}": ${val}`));
+          log(chalk.yellow(`  Non-numeric value for "${name}": ${val}`));
           return "ok";
         }
         positions[name] = num;
       }
       if (Object.keys(positions).length === 0) {
-        console.log(
-          chalk.yellow(
-            "Usage: joints shoulder_pan=0.5 elbow=-0.3"
-          )
-        );
+        log(chalk.yellow("  Usage: joints shoulder_pan=0.5 elbow=-0.3"));
         break;
       }
       try {
@@ -246,11 +297,11 @@ function handleControlInput(
         const summary = Object.entries(positions)
           .map(([k, v]) => `${k}=${v}`)
           .join(", ");
-        console.log(chalk.dim(`→ ${summary}`));
+        log(chalk.dim(`  ← ${summary}`));
       } catch (err) {
-        console.log(
+        log(
           chalk.red(
-            `Send failed: ${err instanceof Error ? err.message : String(err)}`
+            `  Send failed: ${err instanceof Error ? err.message : String(err)}`
           )
         );
       }
@@ -260,16 +311,16 @@ function handleControlInput(
     case "gripper": {
       const openness = parseFloat(parts[1]);
       if (isNaN(openness) || openness < 0 || openness > 1) {
-        console.log(chalk.yellow("Usage: gripper <0-1>  e.g. gripper 0.8"));
+        log(chalk.yellow("  Usage: gripper <0-1>  e.g. gripper 0.8"));
         break;
       }
       try {
         session.sendGripper(openness);
-        console.log(chalk.dim(`→ gripper = ${openness}`));
+        log(chalk.dim(`  ← gripper = ${openness}`));
       } catch (err) {
-        console.log(
+        log(
           chalk.red(
-            `Send failed: ${err instanceof Error ? err.message : String(err)}`
+            `  Send failed: ${err instanceof Error ? err.message : String(err)}`
           )
         );
       }
@@ -277,9 +328,9 @@ function handleControlInput(
     }
 
     default:
-      console.log(
+      log(
         chalk.yellow(
-          `Unknown command: "${cmd}". Type "help" for available commands.`
+          `  Unknown command: "${cmd}". Type "help" for available commands.`
         )
       );
   }
@@ -287,33 +338,37 @@ function handleControlInput(
   return "ok";
 }
 
-function printTelemetry(frame: TelemetryFrame): void {
+function formatTelemetry(frame: TelemetryFrame, frameCount: number): string {
   const lines: string[] = [];
 
   if (Object.keys(frame.jointStates).length > 0) {
-    const joints = Object.entries(frame.jointStates)
-      .map(([k, v]) => `${k}=${v.position.toFixed(3)}`)
-      .join("  ");
-    lines.push(`${chalk.bold("Joints:")} ${joints}`);
+    lines.push(chalk.bold("Joints:"));
+    for (const [name, state] of Object.entries(frame.jointStates)) {
+      const padded = name.padEnd(20);
+      const sign = state.position >= 0 ? " " : "";
+      lines.push(`  ${padded} ${sign}${state.position.toFixed(4)} rad`);
+    }
   }
 
   if (frame.basePose?.position) {
     const p = frame.basePose.position;
+    if (lines.length > 0) lines.push("");
+    lines.push(chalk.bold("Base Pose:"));
     lines.push(
-      `${chalk.bold("Pose:")} x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} z=${p.z.toFixed(3)}`
+      `  x=${p.x.toFixed(4)}  y=${p.y.toFixed(4)}  z=${p.z.toFixed(4)}`
     );
   }
 
   if (frame.cameras.length > 0) {
-    lines.push(
-      `${chalk.bold("Cameras:")} ${frame.cameras.map((c) => `${c.cameraName}(${c.width}x${c.height})`).join(", ")}`
-    );
+    if (lines.length > 0) lines.push("");
+    const camList = frame.cameras
+      .map((c) => `${c.cameraName} (${c.width}×${c.height})`)
+      .join(", ");
+    lines.push(`${chalk.bold("Cameras:")} ${camList}`);
   }
 
-  if (lines.length > 0) {
-    // Move cursor up to overwrite previous telemetry output
-    process.stdout.write(
-      `\r${chalk.dim("[")}${chalk.cyan("telemetry")}${chalk.dim("]")} ${lines.join(" | ")}\n`
-    );
-  }
+  if (lines.length > 0) lines.push("");
+  lines.push(chalk.dim(`frame #${frameCount}`));
+
+  return lines.join("\n");
 }
